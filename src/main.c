@@ -1,8 +1,10 @@
 /*
  * main.c - RP2350-USB-CM 脱机 ADB 客户端
  *
- * 上电 -> PIO-USB 做 Host -> 插手机 -> 自动 ADB 握手 -> 发 "tcpip:5555"
- * -> LED 提示，全程不需要电脑。
+ * 上电 -> PIO-USB 做 Host -> 插手机 -> 自动 ADB 握手
+ *      -> adb tcpip 5555 -> (adbd 重启, USB 重新枚举, 自动重新握手)
+ *      -> adb shell sh .../shizuku.../start.sh
+ *      -> LED 提示，全程不需要电脑。
  */
 #include <stdio.h>
 
