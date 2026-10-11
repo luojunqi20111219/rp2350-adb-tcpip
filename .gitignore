@@ -1,0 +1,26 @@
+# 构建产物
+build/
+cmake-build-*/
+
+# 依赖
+lib/
+
+# 自动生成的密钥（含私钥，绝对不要提交）
+src/adb_key_data.h
+tools/adbkey.pem
+tools/adbkey.pub
+
+# 编辑器
+.vscode/
+.idea/
+*.swp
+.DS_Store
+
+# 编译中间件
+*.o
+*.d
+*.elf
+*.bin
+*.hex
+*.uf2
+*.map
