@@ -115,8 +115,6 @@ file(GLOB MBEDTLS_SRCS
         ${MBEDTLS_DIR}/library/constant_time.c      # 3.6+
         ${MBEDTLS_DIR}/library/platform_util.c
         ${MBEDTLS_DIR}/library/platform.c
-        ${MBEDTLS_DIR}/library/rsa.c
-        ${MBEDTLS_DIR}/library/rsa_internal.c       # 2.x 有，3.x 无（GLOB 自动跳过）
 )
 
 add_library(adb_mbedtls STATIC ${MBEDTLS_SRCS})
@@ -124,7 +122,7 @@ target_include_directories(adb_mbedtls PUBLIC
         ${MBEDTLS_DIR}/include
         ${CMAKE_CURRENT_LIST_DIR}/mbedtls)
 target_compile_definitions(adb_mbedtls PRIVATE
-        MBEDTLS_USER_CONFIG_FILE="mbedtls_config.h")
+        MBEDTLS_CONFIG_FILE="adb_mbedtls_config.h")
 target_compile_options(adb_mbedtls PRIVATE -Os -w)
 
 # ----------------------------------------------------------------------------

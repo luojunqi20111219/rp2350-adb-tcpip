@@ -24,7 +24,7 @@ rp2350-adb-tcpip/
 ├── CMakeLists.txt            # 构建脚本（含 PIO-USB / mbedtls 白名单 / 密钥自动生成）
 ├── pico_sdk_import.cmake     # Pico SDK 引入脚本
 ├── mbedtls/
-│   └── mbedtls_config.h      # 裁剪后的 mbedtls 配置（只留 bignum + RSA + PKCS#1 v1.5）
+│   └── adb_mbedtls_config.h  # 裁剪后的 mbedtls 配置（只留大数运算）
 ├── src/
 │   ├── board_config.h        # ★ 板级引脚，只有这里需要按实物改
 │   ├── tusb_config.h         # TinyUSB 裁剪配置（只开 Host）
@@ -124,9 +124,9 @@ mkdir -p lib
 git clone --depth 1 -b v3.6.2 https://github.com/Mbed-TLS/mbedtls.git lib/mbedtls
 ```
 
-> 只有 `mbedtls/library/` 和 `mbedtls/include/` 会被用到，
-> **不用** `git submodule update`（framework/tf-psa-crypto 那些都不需要）。
-> 也用 2.28.x 的 tag，代码里有版本分支兼容。
+> 只需要 `mbedtls/library/` 和 `mbedtls/include/`，**不用** `git submodule update`。
+> 推荐直接用 **Pico SDK 自带的那份**（`-DMBEDTLS_DIR=$PICO_SDK_PATH/lib/mbedtls`），
+> 省一次下载且版本一定匹配。
 
 ### 3.4 交叉工具链
 
@@ -306,15 +306,33 @@ UART 日志接法：GP0 = TX（板子→USB-TTL 的 RX），GP1 = RX，GND 共�
 
 ---
 
-## 9. 资源占用（估算，Release / -Os）
+## 9. 资源占用（实测）
 
-| 项目 | 大小 |
+在 **Pico SDK 2.3.1 + arm-none-eabi-gcc 13.2.1 + Release/-Os** 下实测：
+
+| 项目 | 实测 |
 |---|---|
-| Flash（含 PIO-USB + TinyUSB Host 裁剪 + 裁剪 mbedtls） | 约 60–80 KB |
-| SRAM（含 4 KB ADB 收发缓冲、PIO USB 缓冲） | 约 20–30 KB |
-| 签名耗时（RSA-2048 CRT，150 MHz） | 约 20–60 ms |
+| FLASH | **53,296 B**（pico2 板级 4 MB 的 1.27%；微雪板 2 MB 也绰绰有余） |
+| RAM | **31 KB**（512 KB 的 6.05%） |
+| `.text` / `.bss` | 57,388 B / 15,216 B |
+| uf2 大小 | 105 KB |
+| 签名耗时（RSA-2048 非 CRT，150 MHz） | 约 0.1 s |
 
-RP2350 有 2 MB Flash / 520 KB SRAM，余量非常大。
+> 对照：如果直接用 mbedtls 的 `mbedtls_rsa_*` API，`rsa.c` 会连带拖进
+> `asn1parse/asn1write`（DER 导入导出）、`md.c`（哈希抽象层）、
+> `rsa_alt_helpers.c`（参数推导/校验）以及至少一个哈希实现，**多 20~30 KB Flash**。
+> 本工程只用 mbedtls 的 bignum 做模幂，等价且小一个量级。
+
+### 实测编译命令
+
+```bash
+export PICO_SDK_PATH=/opt/pico-sdk          # 2.3.1
+cd rp2350-adb-tcpip && mkdir -p build && cd build
+cmake .. -DPICO_BOARD=pico2 -DCMAKE_BUILD_TYPE=Release \
+         -DMBEDTLS_DIR=$PICO_SDK_PATH/lib/mbedtls
+make -j$(nproc)
+# 产出 build/rp2350_adb_tcpip.uf2
+```
 
 ---
 
@@ -347,4 +365,10 @@ RP2350 有 2 MB Flash / 520 KB SRAM，余量非常大。
   while(usbh_edpt_busy()) tuh_task();` 这种写法（官方示例也是这么干的），
   代码可读性好得多，裸机上也不会死锁（传输完成由 USB 中断驱动）。
 * **mbedtls 裁剪**：真正省空间的是 CMake 里那份 `.c` 白名单
-  （`bignum*.c` / `rsa.c` / `platform_util.c`），配置只是辅助。
+  （`bignum*.c` / `constant_time.c` / `platform_util.c`）。配置里**不定义**
+  `MBEDTLS_RSA_C` —— RSA 的模幂直接用 `mbedtls_mpi_exp_mod` 做，
+  避开了 `rsa.c` 连带的一大串 ASN.1/MD 依赖（见 `src/adb_auth.c` 顶部注释）。
+* **配置文件必须叫别的名字**：mbedtls 的 `build_info.h` 用
+  `#include "mbedtls_config.h"` 引入配置，而它自己就在 `include/mbedtls/` 下，
+  同名会被默认配置抢占、你的改动被静默忽略。所以这里叫 `adb_mbedtls_config.h`，
+  并且是**完全替换**默认配置（`MBEDTLS_CONFIG_FILE`）而不是叠加。
